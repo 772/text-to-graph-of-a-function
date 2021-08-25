@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>text-to-graph-of-a-function</title>
+  <meta charset="UTF-8">
+  <meta name="description" content="Turn text into a graph of a function!">
+  <meta name="keywords" content="Math, Formular, Graph, Text, Tool, Function, Letter, Number, JavaScript">
+  <meta name="author" content="Armin Schäfer">
+  <link rel="stylesheet" type="text/css" href="http://jsxgraph.uni-bayreuth.de/distrib/jsxgraph.css" />
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  <!-- This JavaScript file contains the ASCII art. -->
+  <script type="text/javascript" src="Tom-Thumb-symbols.js"></script> 
+  <script type="text/javascript" src="http://jsxgraph.uni-bayreuth.de/distrib/jsxgraphcore.js"></script>
+</head>
+
+<body>
+  <div class="container" style="padding: 2em;">
+    <center>
+      <!-- Only the following symbols are supported. -->
+      <h3>input text (A-Z a-z 0-9 space)</i></h3>
+      <!-- Only allow certain symbols in the input element.
+      The max length is 11 because there can be weird artifacts with 12 letters. -->
+      <input class="form-control" id="input" title="Type in a short word..." placeholder="Type in a short word..." type="text" pattern="[a-zA-Z0-9 ]*" maxlength="11" onchange="generate_ascii()" style="width:180px;">
+      <!-- The "display:none" is placed here, because the whole element is only for debugging. -->
+      <div style="display: none; font-family: Consolas;">
+        <h3>90-degree turn</h3>
+        <textarea class="form-control w-25 rows="2" id="rotated" disabled></textarea>
+      </div>
+      <br>
+      <form>
+        <input type="radio" id="step" name="Appearance" checked="checked" onchange="reset_line_size()">
+        <label for="step"> Step function</label>
+        <input type="radio" id="piec" name="Appearance" onchange="reset_line_size()">
+        <label for="piec"> No jump discontinuities</label>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" title="Choose whether there are more lines." value="" id="duplicate" onchange="update_function()">
+          <label class="form-check-label" for="duplicate">Duplicate all pixels (takes a few seconds!)</label>
+        </div>
+      </form>
+      <h3>function f(x)</h3>
+      <!-- This textarea could be disabled, but it's no disadvantage to be able to edit it. -->
+      <textarea title="Generated function." class="form-control w-50" rows="2" id="function" onchange="update_graph()">-1</textarea>
+      <h3>graph</h3>
+      <div id="jxgbox" class="jxgbox" style="background-color:#eee;width:600px;height:600px;"></div>
+      <h3>graph settings</h3>
+      <div class="form-check form-check-inline">
+        <input id="color" class="form-control form-control-color" title="Choose your color" type="color" value="#0000ff" onchange="update_graph()">&nbsp;
+        <input type="number" class="form-control" id="size" title="Choose the size of the line" value="4" min="1" max="50" onchange="update_graph()">
+        <span class="input-group-text">px</span>&nbsp;
+        <input class="form-check-input" title="Choose whether axis are visible" type="checkbox" value="" id="show_axis" onchange="update_graph()" checked>
+        <label class="form-check-label" for="show_axis">Show&nbsp;axis</label>
+      </div>
+      <hr>
+      <!-- Hyperlink to the GitHub page. -->
+      <footer>
+        <small><a href="https://github.com/772/text-to-graph-of-a-function">Fork on GitHub</a></small>
+      </footer>
+    </center>
+  </div>
+
+  <!-- This JavaScript is one line above </body>. -->
+  <script>
+  // Default zoom.
+  var global_zoom = 10;
+
+  /* --- Helper functions --- */
+
+  function reset_line_size() {
+    document.getElementById("size").value = document.getElementById("piec").checked ? 1 : 4;
+    update_function();
+  }
+
+  function formula_line(x1, y1, x2, y2) {
+    // Get slope.
+    var m = (y2 - y1) / (x2 - x1);
+    // Make the function easier if step function is selected. In step functions y1 is equal to y2.
+    var y = (y1 == y2) ? y1 : "(" + m + "*(x-" + x1 + ")+" + y1 + ")";
+    return "+(Math.pow((1+(x-"+x1+")/Math.sqrt(Math.pow((x-"+x1+"),2)+Math.pow(0,(Math.pow((x-"+x1+"),2))))*2),2)-1)/8*(1-(Math.pow((1+(x-"+x2+")/Math.sqrt(Math.pow((x-"+x2+"),2)+Math.pow(0,(Math.pow((x-"+x2+"),2))))*2),2)-1)/8)*" + y;
+  }
+
+  // Returns a rounded number with only two decimal places.
+  function round2(x)
+  {
+    return (Math.round(x * 100) / 100);
+  }
+
+  /* --- Three functions to turn text in a graph. --- */
+
+  // Step 1: Turn a symbol into ASCII art, it will also rotate the ASCII art by 90 degrees clockwise.
+  function generate_ascii() {
+    var text = document.getElementById("input").value;
+    var rotated_ascii = ""
+    for (var i = 0; i < text.length; i++) {
+      // Next ASCII position from input text.
+      index = text.charAt(i).charCodeAt(0);
+      // Now we turn the ASCII position to the index position of symbols.js.
+      if (index >= 48 && index <= 57)       index -= 47; // ASCII "0" - "9".
+      else if (index >= 65 && index <= 90)  index -= 54; // ASCII "A" - "Z".
+      else if (index >= 97 && index <= 122) index -= 60; // ASCII "a" - "z".
+      else                                  index  = 0;  // Just print ASCII " " if an unallowed symbol was typed in. Easy way to handle errors.
+      var symbol_ascii = symbols[index];
+      let super_hgt = symbol_ascii.length - symbol_ascii.replace(/\n/g, "").length;
+      var input = symbol_ascii.replace(/\n/g, "");
+      var super_wdt = input.length / super_hgt;
+      var new_symbol = "";
+      for (var x = 0; x < super_wdt; x++) {
+        for (var y = 0; y < super_hgt; y++) {
+          var position = input.length - super_wdt * (y + 1) + x;
+          new_symbol += input.substring(position, position + 1);
+        }
+        new_symbol += "\n";
+      }
+      // Add a margin between two "symbols".
+      rotated_ascii += new_symbol + "     \n";
+    }
+    document.getElementById("rotated").value = rotated_ascii;
+    update_function();
+  }
+
+  // Step 2: Generate function.
+  function update_function() {
+    var input = document.getElementById("rotated").value;
+    let super_hgt = input.length - input.replace(/\n/g, "").length;
+    var input = input.replace(/\n/g, "");
+    var super_wdt = input.length / super_hgt;
+    var step_function = document.getElementById("piec").checked ? false : true;
+    var px_wdt = document.getElementById("duplicate").checked ? 2 : 1;
+    [super_wdt, super_hgt] = [super_hgt, super_wdt];
+    var formel_no = "-1";
+    var x1 = 0, wdt, x2;
+
+    // Draw whole image.
+    for (var i = 0; i < super_wdt; i++) {
+      for (var k = 0; k < px_wdt; k++) {
+        for (var j = 0; j < super_hgt; j++) {
+          var index = j+super_hgt*i;
+          var c = input.substring(index, index+1);
+          // A █ means that we want to draw a visible "pixel" now.
+          if (c == "█") {
+            if (step_function) {
+              x1 = round2(x1, 2);
+              if (px_wdt == 2) {
+                wdt = round2(0.6/super_hgt/px_wdt);
+
+                x2 = round2(wdt + x1);
+                formel_no += formula_line(x1, j+1.25, x2, j+1.25);
+                x1 = x2;
+
+                x2 = round2(wdt + x1);
+                formel_no += formula_line(x1, j+1.75, x2, j+1.75);
+                x1 = x2;
+              }
+              else {
+                wdt = round2(2*0.6/super_hgt/px_wdt);
+
+                x2 = round2(wdt + x1);
+                formel_no += formula_line(x1, j+1.5, x2, j+1.5);
+                x1 = x2;
+              }
+            }
+            else {
+              wdt = round2(1/super_hgt/px_wdt/3);
+
+              x2 = round2(wdt + x1);
+              formel_no += formula_line(x1, j, x2, j+1);
+              x1 = x2;
+
+              x2 = round2(wdt + x1);
+              formel_no += formula_line(x1, j+1, x2, j);
+              x1 = x2;
+
+              x2 = round2(wdt + x1);
+              formel_no += formula_line(x1, j, x2, j+1);
+              x1 = x2;
+            }
+          }
+          // No visible pixel.
+          else {
+            if (!step_function) {
+              wdt = round2(1/super_hgt/px_wdt);
+
+              x2 = round2(wdt + x1);
+              formel_no += formula_line(x1, j, x2, j+1);
+              x1 = x2;
+            }
+            else {
+              wdt = round2(1/super_hgt/px_wdt);
+
+              x2 = round2(wdt + x1);
+              x1 = x2;
+            }
+          }
+        }
+        if (!step_function) {
+          // This wdt is the width of the nearly vertical line that goes from f(x)=4 to f(x)=-1.
+          wdt = 0.01;
+
+          x2 += wdt;
+          formel_no += formula_line(x1, j, x2, 0);
+          x1 = x2;
+        }
+      }
+    }
+    // Replace the content of the textarea.
+    document.getElementById("function").value = formel_no;
+    // Update the zoom variable.
+    global_zoom = super_wdt;
+    update_graph();
+  }
+
+  // Step 3: Update JSXGraph.
+  function update_graph() {
+    graph_zoom = global_zoom + 6; // +6 gives us more room to make sure there is some margin on the border.
+    board = JXG.JSXGraph.initBoard('jxgbox', {boundingbox: [-1, graph_zoom/2, graph_zoom-1, -graph_zoom/2], axis: document.getElementById("show_axis").checked, showCopyright: false });
+    eval("function f(x){ return "+document.getElementById("function").value+";}");
+    graph = board.create('functiongraph', [function(x){ return f(x); }], {strokeColor:document.getElementById("color").value,strokeWidth:document.getElementById("size").value});
+  }
+
+  // Even with no input, we want to draw the default function f(x) = -1.
+  // We need to call the generate_ascii because otherwise the zoom would be resetted when the user presses F5 to refresh the page.
+  generate_ascii();
+  </script>
+</body>
+</html>
